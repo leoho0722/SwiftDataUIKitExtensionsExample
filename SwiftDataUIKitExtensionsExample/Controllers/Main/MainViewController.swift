@@ -19,8 +19,19 @@ class MainViewController: UIViewController {
     // MARK: - Variables
     
     private var todos: [Todo] = []
+    private var oldTodo: Todo?
+    private var updatedTodo: Todo?
     
     private var contentUnavailableView: UIContentUnavailableView?
+    
+    private var btnState: ButtonState = .save
+    
+    enum ButtonState {
+        
+        case save
+        
+        case update
+    }
     
     // MARK: - LifeCycle
     
@@ -72,8 +83,13 @@ class MainViewController: UIViewController {
         setupTapGesture()
     }
     
-    fileprivate func setupButton() {
-        btnSave.setTitle("Save", for: .normal)
+    fileprivate func setupButton(state: ButtonState = .save) {
+        switch state {
+        case .save:
+            btnSave.setTitle("Save", for: .normal)
+        case .update:
+            btnSave.setTitle("Update", for: .normal)
+        }
     }
     
     fileprivate func setupTableView() {
@@ -115,8 +131,22 @@ class MainViewController: UIViewController {
         guard let text = txfInput.text, !text.isEmpty else {
             return
         }
-        let todo = Todo(taskName: text, time: Date().timeIntervalSince1970)
-        LocalDatabaseManager.shared.create(with: todo)
+        switch btnState {
+        case .save:
+            let todo = Todo(taskName: text, time: Date().timeIntervalSince1970)
+            LocalDatabaseManager.shared.create(with: todo)
+        case .update:
+            guard let oldTodo = oldTodo,
+                  let updatedTodo = updatedTodo else {
+                return
+            }
+            updatedTodo.taskName = text
+            updatedTodo.time = Date().timeIntervalSince1970
+            LocalDatabaseManager.shared.update(from: oldTodo, updateTo: updatedTodo)
+            btnState = .save
+            setupButton()
+            txfInput.text = nil
+        }
     }
     
     // MARK: - Functions
@@ -167,6 +197,40 @@ extension MainViewController: UITableViewDataSource, UITableViewDelegate {
     }
     
     // UITableViewDelegate
+    
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: false)
+    }
+    
+    func tableView(_ tableView: UITableView, 
+                   leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let updateAction = UIContextualAction(style: .normal, title: "") { [unowned self] action, view, finish in
+            let updatedTodo = todos[indexPath.row]
+            oldTodo = updatedTodo
+            self.updatedTodo = updatedTodo
+            txfInput.text = updatedTodo.taskName
+            btnState = .update
+            setupButton(state: .update)
+            finish(true)
+        }
+        updateAction.image = UIImage(symbols: .pencilCircle)
+        
+        let configuration = UISwipeActionsConfiguration(actions: [updateAction])
+        return configuration
+    }
+    
+    func tableView(_ tableView: UITableView,
+                   trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let deleteAction = UIContextualAction(style: .destructive, title: "") { [unowned self] action, view, finish in
+            let deletedTodo = todos[indexPath.row]
+            LocalDatabaseManager.shared.delete(with: deletedTodo)
+            finish(true)
+        }
+        deleteAction.image = UIImage(symbols: .trashCircle)
+        
+        let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+        return configuration
+    }
 }
 
 // MARK: - Protocol
